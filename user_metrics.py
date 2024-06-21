@@ -67,7 +67,7 @@ def create_user_metrics(users, questions, articles, tags):
             input("Press Enter to continue...")
             continue
         user_metrics.append(user_metric)
-    
+
     return user_metrics
 
 
@@ -108,13 +108,13 @@ def add_new_user_fields(users):
             (time.time() - user['creation_date'])/60/60/24)
         user['account_inactivity_days'] = round(
             (time.time() - user['last_access_date'])/60/60/24)
-        
+
         try:
             if user['is_deactivated']:
                 user['account_status'] = 'Deactivated'
             else:
                 user['account_status'] = 'Active'
-        except KeyError: # Stack Overflow Business or Basic
+        except KeyError:  # Stack Overflow Business or Basic
             user['account_status'] = 'Registered'
     return users
 
@@ -140,11 +140,11 @@ def process_tags(users, tags):
             for sme in tag['smes']['users']:
                 if user['user_id'] == sme['id']:
                     user['sme_tags'].append(tag['name'])
-                    continue # if user is an individual SME, skip the group SME check
+                    continue  # if user is an individual SME, skip the group SME check
             for sme in tag['smes']['userGroups']:
                 if user['user_id'] == sme['id']:
                     user['sme_tags'].append(tag['name'])
-        
+
     return users
 
 
@@ -154,7 +154,7 @@ def process_questions(users, questions):
         asker_id = validate_user_id(question['owner'])
         user_index = get_user_index(users, asker_id)
 
-        if user_index == None: # if user was deleted, add them to the list
+        if user_index is None:  # if user was deleted, add them to the list
             deleted_user = initialize_deleted_user(asker_id, question['owner']['display_name'])
             users.append(deleted_user)
             user_index = get_user_index(users, asker_id)
@@ -169,14 +169,14 @@ def process_questions(users, questions):
 
     return users
 
-        
+
 def process_answers(users, answers, question):
 
     for answer in answers:
         answerer_id = validate_user_id(answer['owner'])
         user_index = get_user_index(users, answerer_id)
 
-        if user_index == None:
+        if user_index is None:
             deleted_user = initialize_deleted_user(answerer_id, answer['owner']['display_name'])
             users.append(deleted_user)
             user_index = get_user_index(users, answerer_id)
@@ -197,7 +197,7 @@ def process_comments(users, object_with_comments):
         commenter_id = validate_user_id(comment['owner'])
         user_index = get_user_index(users, commenter_id)
 
-        if user_index == None:
+        if user_index is None:
             deleted_user = initialize_deleted_user(commenter_id, comment['owner']['display_name'])
             users.append(deleted_user)
             user_index = get_user_index(users, commenter_id)
@@ -212,7 +212,7 @@ def process_articles(users, articles):
     for article in articles:
         author_id = validate_user_id(article['owner'])
         user_index = get_user_index(users, author_id)
-        if user_index == None:
+        if user_index is None:
             deleted_user = initialize_deleted_user(author_id, article['owner']['display_name'])
             users.append(deleted_user)
             user_index = get_user_index(users, author_id)
@@ -226,12 +226,11 @@ def process_articles(users, articles):
         #         tag_contributors[tag]['commenters'] = add_user_to_list(
         #             commenter_id, tag_contributors[tag]['commenters']
         #         )
-        
+
     return users
 
 
 def process_users(users):
-
 
     for user in users:
         for question in user['questions']:
@@ -280,8 +279,8 @@ def get_user_index(users, user_id):
     for index, user in enumerate(users):
         if user['user_id'] == user_id:
             return index
-    
-    return None # if user is not found
+
+    return None  # if user is not found
 
 
 def initialize_deleted_user(user_id, display_name):
@@ -319,7 +318,7 @@ def initialize_deleted_user(user_id, display_name):
         'communities': [],
         'sme_tags': [],
         'watched_tags': [],
-        
+
         'moderator': '',
         'email': '',
         'title': '',
@@ -342,7 +341,7 @@ def validate_user_id(user):
 
     try:
         user_id = user['user_id']
-    except KeyError: # if user_id is not present, the user was deleted
+    except KeyError:  # if user_id is not present, the user was deleted
         try:
             user_id = int(user['display_name'].split('user')[1])
         except IndexError:
@@ -351,7 +350,6 @@ def validate_user_id(user):
             user_id = user['display_name']
 
     return user_id
-
 
 
 # def export_to_csv(data_name, data):
@@ -365,6 +363,5 @@ def validate_user_id(user):
 #         writer.writerow(csv_header)
 #         for tag_data in data:
 #             writer.writerow(list(tag_data.values()))
-        
-#     print(f'CSV file created: {file_name}')
 
+#     print(f'CSV file created: {file_name}')

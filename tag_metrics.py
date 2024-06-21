@@ -2,14 +2,13 @@
 import statistics
 
 
-def create_tag_metrics(questions, articles, tags):
+def create_tag_metrics(questions, articles, tags, communities):
 
     tags = process_tags(tags)
     tags = process_questions(tags, questions)
     tags = process_articles(tags, articles)
     # tags = process_users(tags, api_data['users']
-    # tags = process_communities(tags, api_data.get('communities'))
-    # tags = process_webhooks(tags, api_data['webhooks'])
+    tags = process_communities(tags, communities)
 
     # tally up miscellaneous metrics for each tag
     for tag in tags:
@@ -20,40 +19,40 @@ def create_tag_metrics(questions, articles, tags):
         tag['metrics']['unique_article_contributors'] = len(
             tag['contributors']['article_contributors'])
         tag['metrics']['total_unique_contributors'] = len(set(
-            tag['contributors']['askers'] + 
+            tag['contributors']['askers'] +
             tag['contributors']['answerers'] +
-            tag['contributors']['commenters'] + 
+            tag['contributors']['commenters'] +
             tag['contributors']['article_contributors']))
-        
+
         # Calculate total self-answered questions
         tag['metrics']['questions_self_answered'] = len(tag['self_answered_questions'])
-        
+
         # Calculate median time to first answer and median time to first response
         try:
             tag['metrics']['median_time_to_first_response_hours'] = round(statistics.median(
-                    [list(response.values())[0] for response in tag['response_times']]), 2)
-        except statistics.StatisticsError: # if there are no responses for a tag
+                [list(response.values())[0] for response in tag['response_times']]), 2)
+        except statistics.StatisticsError:  # if there are no responses for a tag
             pass
-        
+
         try:
             tag['metrics']['median_time_to_first_answer_hours'] = round(statistics.median(
                 [list(answer.values())[0] for answer in tag['answer_times']]), 2)
-        except statistics.StatisticsError: # if there are no answers for a tag
+        except statistics.StatisticsError:  # if there are no answers for a tag
             pass
 
         # Sort responses and answers by time to first response/answer, in descending order
         tag['response_times'] = sorted(
-            tag['response_times'], 
-            key=lambda k: list(k.values())[0], 
+            tag['response_times'],
+            key=lambda k: list(k.values())[0],
             reverse=True)
         tag['answer_times'] = sorted(
-            tag['answer_times'], 
-            key=lambda k: list(k.values())[0], 
+            tag['answer_times'],
+            key=lambda k: list(k.values())[0],
             reverse=True)
-    
+
     tag_metrics = [tag['metrics'] for tag in tags]
     tag_metrics = sorted(tag_metrics, key=lambda k: k['total_page_views'], reverse=True)
-    
+
     return tag_metrics
 
 
@@ -110,10 +109,10 @@ def process_tags(tags):
             for user in group['users']:
                 tag['contributors']['group_smes'] = add_user_to_list(
                     user['id'], tag['contributors']['group_smes'])
-        
+
         tag['metrics']['total_smes'] = len(set(
             tag['contributors']['individual_smes'] + tag['contributors']['group_smes']))
-        
+
     return tags
 
 
@@ -124,7 +123,7 @@ def process_questions(tags, questions):
             tag_index = get_tag_index(tags, tag)
             tag_data = tags[tag_index]
             asker_id = validate_user_id(question['owner'])
-            
+
             tag_data['contributors']['askers'] = add_user_to_list(
                 asker_id, tag_data['contributors']['askers'])
 
@@ -139,7 +138,7 @@ def process_questions(tags, questions):
                     tag_data, question)
             else:
                 time_to_first_comment = 0
-            
+
             # calculate tag metrics for answers
             if question.get('answers'):
                 tag_data, time_to_first_answer = process_answers(
@@ -163,14 +162,14 @@ def process_questions(tags, questions):
             else:
                 time_to_first_response = None
 
-            if time_to_first_response: # if there are no responses, don't add to list
+            if time_to_first_response:  # if there are no responses, don't add to list
                 tag_data['response_times'].append({question['link']: time_to_first_response})
-                                        
+
             tags[tag_index] = tag_data
 
     return tags
 
-        
+
 def process_answers(tag_data, answers, question):
 
     for answer in answers:
@@ -184,8 +183,8 @@ def process_answers(tag_data, answers, question):
         tag_data['metrics']['answer_downvotes'] += answer['down_vote_count']
 
         # Calculate number of answers from SMEs
-        if (answerer_id in tag_data['contributors']['group_smes'] 
-            or answerer_id in tag_data['contributors']['individual_smes']):
+        if (answerer_id in tag_data['contributors']['group_smes']
+                or answerer_id in tag_data['contributors']['individual_smes']):
             tag_data['metrics']['sme_answers'] += 1
 
         if answer.get('comments'):
@@ -206,14 +205,14 @@ def process_answers(tag_data, answers, question):
     # If both uers have been deleted, the `display_name` attribute can be compared to see if they
         # are the same person
     time_to_first_answer = 0
-    if answers[0]['owner'].get('user_id'): # answer owner is known
+    if answers[0]['owner'].get('user_id'):  # answer owner is known
         if answers[0]['owner']['user_id'] != question['owner'].get('user_id'):
             time_to_first_answer = (answers[0]['creation_date'] - question['creation_date'])/60/60
-        else: # if answer owner is the same as question owner, it's a self-answer
+        else:  # if answer owner is the same as question owner, it's a self-answer
             tag_data['self_answered_questions'].append(question['link'])
-    elif question['owner'].get('user_id'): # answer owner is unknown, but question owner is known
+    elif question['owner'].get('user_id'):  # answer owner is unknown, but question owner is known
         time_to_first_answer = (answers[0]['creation_date'] - question['creation_date'])/60/60
-    else: # if both question and answer owner are unknown, check display names for a match
+    else:  # if both question and answer owner are unknown, check display names for a match
         if answers[0]['owner']['display_name'] == question['owner']['display_name']:
             tag_data['self_answered_questions'].append(question['link'])
         else:
@@ -244,13 +243,13 @@ def process_question_comments(tag_data, question):
         # are the same person
     if question['comments'][0]['owner'].get('user_id'):
         if question['comments'][0]['owner']['user_id'] != question['owner'].get('user_id'):
-            time_to_first_comment = (question['comments'][0]['creation_date'] - 
-                                    question['creation_date'])/60/60
+            time_to_first_comment = (question['comments'][0]['creation_date'] -
+                                     question['creation_date'])/60/60
         else:
             time_to_first_comment = 0
     elif question['owner'].get('user_id'):
-        time_to_first_comment = (question['comments'][0]['creation_date'] - 
-                                    question['creation_date'])/60/60
+        time_to_first_comment = (question['comments'][0]['creation_date'] -
+                                 question['creation_date'])/60/60
     else:
         time_to_first_comment = 0
 
@@ -283,25 +282,25 @@ def process_articles(tags, articles):
             #         tag_contributors[tag]['commenters'] = add_user_to_list(
             #             commenter_id, tag_contributors[tag]['commenters']
             #         )
-        
+
             tags[tag_index] = tag_data
 
     return tags
 
 
 def process_users(tags, users):
-    ### THIS FUNCTION IS NOT CURRENTLY USED ###
+    # THIS FUNCTION IS NOT CURRENTLY USED ###
 
     return tags
 
 
 def process_communities(tags, communities):
 
-    if communities == None: # if no communities were collected, remove the metric from the report
+    if communities is None:  # if no communities were collected, remove the metric from the report
         for tag in tags:
             del tag['metrics']['communities']
         return tags
-    
+
     # Search for tags in community descriptions and add community count to tag metrics
     for community in communities:
         for tag in community['tags']:
@@ -310,9 +309,9 @@ def process_communities(tags, communities):
                 tags[tag_index]['metrics']['communities'] += 1
                 try:
                     tags[tag_index]['communities'] += community
-                except KeyError: # if communities key does not exist, create it
+                except KeyError:  # if communities key does not exist, create it
                     tags[tag_index]['communities'] = [community]
-            except TypeError: # get_tag_index returned None
+            except TypeError:  # get_tag_index returned None
                 pass
 
     return tags
@@ -320,20 +319,20 @@ def process_communities(tags, communities):
 
 def process_webhooks(tags, webhooks):
 
-    if webhooks == None: # if no webhooks were collected, remove the metric from the report
+    if webhooks is None:  # if no webhooks were collected, remove the metric from the report
         for tag in tags:
             del tag['metrics']['webhooks']
         return tags
-    
+
     # Search for tags in webhook descriptions and add webhook count to tag metrics
     for webhook in webhooks:
         for tag_name in webhook['tags']:
             tag_index = get_tag_index(tags, tag_name)
             try:
                 tags[tag_index]['metrics']['webhooks'] += 1
-            except TypeError: # get_tag_index returned None
+            except TypeError:  # get_tag_index returned None
                 pass
-        
+
     return tags
 
 
@@ -342,12 +341,12 @@ def get_tag_index(tags, tag_name):
     for index, tag in enumerate(tags):
         if tag['name'] == tag_name:
             return index
-    
-    return None # if tag is not found
+
+    return None  # if tag is not found
 
 
 def add_user_to_list(user_id, user_list):
-    """Checks to see if a user_id already exists is in a list. If not, it adds the new user_id to 
+    """Checks to see if a user_id already exists is in a list. If not, it adds the new user_id to
     the list.
 
     Args:
@@ -366,7 +365,7 @@ def validate_user_id(user):
 
     try:
         user_id = user['user_id']
-    except KeyError: # if user_id is not present, the user was deleted
+    except KeyError:  # if user_id is not present, the user was deleted
         user_id = f"{user['display_name']} (DELETED)"
 
     return user_id
@@ -382,13 +381,12 @@ def validate_user_id(user):
 #         writer.writerow(csv_header)
 #         for tag_data in data:
 #             writer.writerow(list(tag_data.values()))
-        
+
 #     print(f'CSV file created: {file_name}')
 
 
-
 # def export_to_json(data_name, data):
-    
+
 #     file_name = data_name + '.json'
 #     directory = 'data'
 
@@ -403,7 +401,7 @@ def validate_user_id(user):
 
 
 # def read_json(file_name):
-    
+
 #     directory = 'data'
 #     file_path = os.path.join(directory, file_name)
 #     try:
@@ -412,5 +410,5 @@ def validate_user_id(user):
 #     except FileNotFoundError:
 #         print(f"File not found: {file_path}")
 #         raise FileNotFoundError
-    
+
 #     return data

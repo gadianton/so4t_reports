@@ -1,47 +1,68 @@
-# Native Python libraries
-import json
+# Native Python Libraries
+from dotenv import load_dotenv
 import os
 
-# Local libraries
-from api_config import BASE_URL, API_KEY, API_TOKEN, PROXY_URL
+# Open Source Libraries
+from so4t_api import StackClient
+
+# Local Libraries
+# from api_config import BASE_URL, API_KEY, API_TOKEN, PROXY_URL
 from so4t_api_v2 import V2Client
-from so4t_api_v3 import V3Client
+
+DATA_DIR = 'data'
+load_dotenv()  # load environment variables from file (if any)
 
 
 def collector():
 
+    try:
+        url = os.environ['SO_URL']
+        token = os.environ['SO_TOKEN']
+        if 'stackoverflowteams.com' in url:
+            key = None  # Only needed for Enterprise
+        else:
+            key = os.environ['SO_KEY']
+        proxy_url = os.getenv('SO_PROXY_URL')  # proxy is optional (as needed)
+    except KeyError:
+        print('Environment variables not found. Please enter the API configuration manually.')
+        url = input('Enter the URL for your Stack Overflow instance: ')
+        token = input('Enter your API token: ')
+        if 'stackoverflowteams.com' in url:
+            key = None
+        else:
+            key = input('Enter your API key: ')
+        proxy_url = input('Enter the proxy URL (leave blank if not needed): ')
+
     # Instantiate API and database (DB) clients
-    v2client = V2Client(BASE_URL, token=API_TOKEN, key=API_KEY, 
-                        proxy=PROXY_URL)
-    v3client = V3Client(BASE_URL, token=API_TOKEN, proxy=PROXY_URL)
+    v2client = V2Client(url, token=token, key=key,
+                        proxy=proxy_url)
+    v3client = StackClient(url, token=token, proxy=proxy_url)
 
     # Get API data from v2 and v3 clients
     # and store them in them in new, temporary collections in the database
-    questions = get_questions_answers_comments(v2client) # also gets answers/comments
-    articles = get_articles(v2client)
-    tags = get_tags(v3client) # also gets tag SMEs
-    users = get_users(v2client, v3client)
-    user_groups = get_user_groups(v3client)
-    communities = get_communities(v3client)
-    collections = get_collections(v3client)
+    api_data = {
+        "questions": get_questions_answers_comments(v2client),  # also gets answers/comments
+        "articles": get_articles(v2client),
+        "tags": get_tags(v3client),  # also gets tag SMEs
+        "users": get_users(v2client, v3client),
+        "user_groups": get_user_groups(v3client),
+        "communities": get_communities(v3client),
+        "collections": get_collections(v3client),
+    }
+    api_data['reputation_history'] = get_reputation_history(v2client, api_data['users']),
 
     # Store the API data in JSON files
-    export_to_json('questions', questions)
-    export_to_json('articles', articles)
-    export_to_json('tags', tags)
-    export_to_json('users', users)
-    export_to_json('user_groups', user_groups)
-    export_to_json('communities', communities)
-    export_to_json('collections', collections)
+    for name, data in api_data.items():
+        v3client.export_to_json(name, data, DATA_DIR)
 
 
 def get_questions_answers_comments(v2client):
-    
+
     # The API filter used for the /questions endpoint makes it so that the API returns
     # all answers and comments for each question. This is more efficient than making
     # separate API calls for answers and comments.
     # Filter documentation: https://api.stackexchange.com/docs/filters
-    if v2client.soe: # Stack Overflow Enterprise requires the generation of a custom filter
+    if v2client.soe:  # Stack Overflow Enterprise requires the generation of a custom filter
         filter_attributes = [
             "answer.body",
             "answer.body_markdown",
@@ -68,7 +89,7 @@ def get_questions_answers_comments(v2client):
             "question.up_vote_count"
         ]
         filter_string = v2client.create_filter(filter_attributes)
-    else: # Stack Overflow Business or Basic
+    else:  # Stack Overflow Business or Basic
         filter_string = '!X9DEEiFwy0OeSWoJzb.QMqab2wPSk.X2opZDa2L'
     questions = v2client.get_all_questions(filter_string)
 
@@ -89,7 +110,7 @@ def get_articles(v2client):
             "comment.link"
         ]
         filter_string = v2client.create_filter(filter_attributes)
-    else: # Stack Overflow Business or Basic
+    else:  # Stack Overflow Business or Basic
         filter_string = '!*Mg4Pjg9LXr9d_(v'
 
     articles = v2client.get_all_articles(filter_string)
@@ -99,17 +120,17 @@ def get_articles(v2client):
 
 def get_tags(v3client):
 
-    # While API v2 is more robust for collecting tag data, it does not return the tag ID field, 
+    # While API v2 is more robust for collecting tag data, it does not return the tag ID field,
     # which is needed to get the SMEs for each tag. Therefore, API v3 is used to get the tag ID
-    tags = v3client.get_all_tags()
+    tags = v3client.get_tags()
 
     # Get subject matter experts (SMEs) for each tag. This API call is only available in v3.
-    # There's no way to get SME configurations in bulk, so this call must be made for each tag, 
-    # making it a bit slower to get through. 
+    # There's no way to get SME configurations in bulk, so this call must be made for each tag,
+    # making it a bit slower to get through.
     # FUTURE WORK: implementing some form of concurrency would speed this up.
     for tag in tags:
         if tag['subjectMatterExpertCount'] > 0:
-            tag['smes'] = v3client.get_tag_smes(tag['id']) 
+            tag['smes'] = v3client.get_tag_smes(tag['id'])
         else:
             tag['smes'] = {'users': [], 'userGroups': []}
 
@@ -119,14 +140,14 @@ def get_tags(v3client):
 def get_users(v2client, v3client):
 
     # Filter documentation: https://api.stackexchange.com/docs/filters
-    if 'soedemo' in v2client.api_url: # for internal testing
+    if 'soedemo' in v2client.api_url:  # for internal testing
         filter_string = ''
-    elif v2client.soe: # Stack Overflow Enterprise requires the generation of a custom filter
+    elif v2client.soe:  # Stack Overflow Enterprise requires the generation of a custom filter
         filter_attributes = [
-            "user.is_deactivated" # this attribute is only available in Enterprise and in API v2
+            "user.is_deactivated"  # this attribute is only available in Enterprise and in API v2
         ]
         filter_string = v2client.create_filter(filter_attributes)
-    else: # Stack Overflow Business or Basic
+    else:  # Stack Overflow Business or Basic
         filter_string = ''
 
     v2_users = v2client.get_all_users(filter_string)
@@ -134,11 +155,11 @@ def get_users(v2client, v3client):
     # Exclude users with an ID of less than 1 (i.e. Community user and user groups)
     v2_users = [user for user in v2_users if user['user_id'] > 1]
 
-    if 'soedemo' in v3client.api_url: # for internal testing only
+    if 'soedemo' in v3client.api_url:  # for internal testing only
         v2_users = [user for user in v2_users if user['user_id'] > 28000]
 
-    v3_users = v3client.get_all_users()
-    
+    v3_users = v3client.get_users()
+
     # Add additional user data from API v3 to user data from API v2
     # API v3 fields to add: 'email', 'jobTitle', 'department', 'externalId, 'role'
     for user in v2_users:
@@ -155,9 +176,9 @@ def get_users(v2client, v3client):
                 break
         try:
             user['moderator']
-        except KeyError: # if user is not found in v3 data, it means they're a deactivated user
+        except KeyError:  # if user is not found in v3 data, it means they're a deactivated user
             # API v3 data can be obtained for deactivated users; it requires a separate API call
-            v3_user = v3client.get_user(user['user_id'])
+            v3_user = v3client.get_user_by_id(user['user_id'])
             user['email'] = v3_user['email']
             user['title'] = v3_user['jobTitle']
             user['department'] = v3_user['department']
@@ -172,52 +193,31 @@ def get_users(v2client, v3client):
     return v2_users
 
 
+def get_reputation_history(v2client, users):
+
+    user_ids = [user['user_id'] for user in users]
+    reputation_history = v2client.get_reputation_history(user_ids)
+
+    return reputation_history
+
+
 def get_user_groups(v3client):
 
-    user_groups = v3client.get_all_user_groups()
-
+    user_groups = v3client.get_user_groups()
     return user_groups
 
 
 def get_communities(v3client):
 
-    communities = v3client.get_all_communities()
-
+    communities = v3client.get_communities()
     return communities
 
 
 def get_collections(v3client):
 
-    collections = v3client.get_all_collections()
-
+    collections = v3client.get_collections()
     return collections
 
-
-def read_json(file_name, directory=''):
-
-    file_path = os.path.join(directory, file_name+'.json')
-
-    try:
-        with open(file_path, 'r') as f:
-            data = json.loads(f.read())
-    except FileNotFoundError:
-        print(f'File not found: {file_path}')
-        data = {}
-
-    return data
-
-
-def export_to_json(data_name, data):
-    file_name = data_name + '.json'
-    directory = 'data'
-
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    file_path = os.path.join(directory, file_name)
-
-    with open(file_path, 'w') as f:
-        json.dump(data, f, indent=4)
-    
 
 if __name__ == "__main__":
     collector()
